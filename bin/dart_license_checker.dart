@@ -64,12 +64,14 @@ void main(List<String> arguments) async {
   final packageConfig = json.decode(packageConfigFile.readAsStringSync());
 
   final rows = <Row>[];
+  final Map<String, dynamic> packageLicensePairs = {};
 
   for (final package in packageConfig['packages']) {
     final name = package['name'];
 
     if (!showTransitiveDependencies) {
-      if (!pubspec.dependencies.containsKey(name)) {
+      if (!pubspec.dependencies.containsKey(name) &&
+          !pubspec.devDependencies.containsKey(name)) {
         continue;
       }
     }
@@ -105,7 +107,9 @@ void main(List<String> arguments) async {
         Cell('No license file'.grey()),
       ]));
     }
+    packageLicensePairs[name] = license?.map((e) => e.spdxIdentifier).join(', ') ?? 'unknown';
   }
+
   print(
     Table(
       tableStyle: TableStyle(border: true),
@@ -129,6 +133,10 @@ void main(List<String> arguments) async {
       ),
     ).render(),
   );
+
+  var encoder = JsonEncoder.withIndent('  ');
+  var prettyPrintedJson = encoder.convert(packageLicensePairs);
+  File('licenses.json').writeAsStringSync(prettyPrintedJson);
 
   exit(0);
 }
