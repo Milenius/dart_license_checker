@@ -1,0 +1,49 @@
+name: Flutter CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  check_licenses:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+    - uses: subosito/flutter-action@v2
+      with:
+        flutter-version: '3.x'
+        channel: 'stable'
+    - name: Download License Checker
+      run: |
+        wget https://github.com/Milenius/dart_license_checker/releases/download/v1.0/dart_license_checker.dill
+    - name: Check Licenses
+      run: |
+        dart pub get
+        dart dart_license_checker.dill
+        cat pubspec.yaml
+        cat licenses.json
+        if grep -q "GPL" licenses.json; then echo "License check failed. GPL license found."; exit 1; fi
+    - name: Upload License Report
+      uses: actions/upload-artifact@v2
+      with:
+        name: licenses
+        path: licenses.json
+
+  build:
+    needs: check_licenses
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+    - uses: subosito/flutter-action@v2
+      with:
+        flutter-version: '3.x'
+        channel: 'stable'
+    - name: Build APK
+      run: flutter build apk
+    - name: Upload APK
+      uses: actions/upload-artifact@v2
+      with:
+        name: app-release
+        path: build/app/outputs/apk/release/
