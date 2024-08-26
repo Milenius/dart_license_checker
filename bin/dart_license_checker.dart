@@ -39,42 +39,57 @@ const possibleLicenseFileNames = [
 ];
 
 void main(List<String> arguments) async {
-  final showTransitiveDependencies =
-      arguments.contains('--show-transitive-dependencies');
-  final pubspecFile = File('pubspec.yaml');
+  try {
+    final showTransitiveDependencies =
+        arguments.contains('--show-transitive-dependencies');
+    final verbose = arguments.contains('--verbose') || arguments.contains('-v');
 
-  if (!pubspecFile.existsSync()) {
-    stderr.writeln('pubspec.yaml file not found in current directory'.red());
-    exit(1);
-  }
-
-  final pubspec = Pubspec.parseYaml(pubspecFile.readAsStringSync());
-
-  final packageConfigFile = File('.dart_tool/package_config.json');
-
-  if (!pubspecFile.existsSync()) {
-    stderr.writeln(
-        '.dart_tool/package_config.json file not found in current directory. You may need to run "flutter pub get" or "pub get"'
-            .red());
-    exit(1);
-  }
-
-  print('Checking dependencies...'.blue());
-
-  final packageConfig = json.decode(packageConfigFile.readAsStringSync());
-
-  final rows = <Row>[];
-  final Map<String, dynamic> packageLicensePairs = {};
-
-  for (final package in packageConfig['packages']) {
-    final name = package['name'];
-
-    if (!showTransitiveDependencies) {
-      if (!pubspec.dependencies.containsKey(name) &&
-          !pubspec.devDependencies.containsKey(name)) {
-        continue;
+    void log(String message) {
+      if (verbose) {
+        print(message);
       }
     }
+
+    log('Starting license check...'.blue());
+
+    final pubspecFile = File('pubspec.yaml');
+
+    if (!pubspecFile.existsSync()) {
+      stderr.writeln('pubspec.yaml file not found in current directory'.red());
+      exit(1);
+    }
+
+    log('pubspec.yaml found. Parsing...'.blue());
+    final pubspec = Pubspec.parseYaml(pubspecFile.readAsStringSync());
+
+    final packageConfigFile = File('.dart_tool/package_config.json');
+
+    if (!packageConfigFile.existsSync()) {
+      stderr.writeln(
+          '.dart_tool/package_config.json file not found in current directory. You may need to run "flutter pub get" or "pub get"'
+              .red());
+      exit(1);
+    }
+
+    log('package_config.json found. Parsing...'.blue());
+    final packageConfig = json.decode(packageConfigFile.readAsStringSync());
+
+    log('Checking dependencies...'.blue());
+
+    final rows = <Row>[];
+    final Map<String, dynamic> packageLicensePairs = {};
+
+    for (final package in packageConfig['packages']) {
+      final name = package['name'];
+      log('Checking license for package: $name'.blue());
+
+      if (!showTransitiveDependencies) {
+        if (!pubspec.dependencies.containsKey(name) &&
+            !pubspec.devDependencies.containsKey(name)) {
+          log('Skipping transitive dependency: $name'.grey());
+          continue;
+        }
+      }
 
     String rootUri = package['rootUri'];
     if (rootUri.startsWith('file://')) {
@@ -101,44 +116,56 @@ void main(List<String> arguments) async {
         Cell(name, style: CellStyle(alignment: TextAlignment.TopRight)),
         ...license.map((lic) => Cell(formatLicenseSpdx(lic)))
       ]));
+      log('License found for $name: ${license.map((lic) => lic.spdxIdentifier).join(', ')}'.green());
     } else {
       rows.add(Row(cells: [
         Cell(name, style: CellStyle(alignment: TextAlignment.TopRight)),
         Cell('No license file'.grey()),
       ]));
+      log('No license found for $name'.yellow());
     }
-    packageLicensePairs[name] = license?.map((e) => e.spdxIdentifier).join(', ') ?? 'unknown';
+      packageLicensePairs[name] = license?.map((e) => e.spdxIdentifier).join(', ') ?? 'unknown';
+    }
+
+    log('Generating license report...'.blue());
+
+    print(
+      Table(
+        tableStyle: TableStyle(border: true),
+        header: TableSection(
+          rows: [
+            Row(
+              cells: [
+                Cell(
+                  'Package Name  '.bold(),
+                  style: CellStyle(alignment: TextAlignment.TopRight),
+                ),
+                Cell('License'.bold()),
+              ],
+              cellStyle: CellStyle(borderBottom: true),
+            ),
+          ],
+        ),
+        body: TableSection(
+          cellStyle: CellStyle(paddingRight: 2),
+          rows: rows,
+        ),
+      ).render(),
+    );
+
+    var encoder = JsonEncoder.withIndent('  ');
+    var prettyPrintedJson = encoder.convert(packageLicensePairs);
+    File('licenses.json').writeAsStringSync(prettyPrintedJson);
+
+    log('License check completed. Results written to licenses.json'.green());
+    exit(0);
+  } catch (e, stackTrace) {
+    print('An error occurred during the license check:'.red());
+    print(e);
+    print('Stack trace:'.red());
+    print(stackTrace);
+    exit(1);
   }
-
-  print(
-    Table(
-      tableStyle: TableStyle(border: true),
-      header: TableSection(
-        rows: [
-          Row(
-            cells: [
-              Cell(
-                'Package Name  '.bold(),
-                style: CellStyle(alignment: TextAlignment.TopRight),
-              ),
-              Cell('License'.bold()),
-            ],
-            cellStyle: CellStyle(borderBottom: true),
-          ),
-        ],
-      ),
-      body: TableSection(
-        cellStyle: CellStyle(paddingRight: 2),
-        rows: rows,
-      ),
-    ).render(),
-  );
-
-  var encoder = JsonEncoder.withIndent('  ');
-  var prettyPrintedJson = encoder.convert(packageLicensePairs);
-  File('licenses.json').writeAsStringSync(prettyPrintedJson);
-
-  exit(0);
 }
 
 String formatLicenseName(LicenseFile license) {
