@@ -15,14 +15,16 @@ jobs:
       with:
         flutter-version: '3.x'
         channel: 'stable'
+    - name: Install dependencies
+      run: |
+        flutter pub get
+        flutter pub add --dev barbecue pana tint
     - name: Download License Checker
       run: |
-        wget https://github.com/Milenius/dart_license_checker/releases/download/v1.0/dart_license_checker.dill
+        wget https://raw.githubusercontent.com/Milenius/dart_license_checker/main/bin/dart_license_checker.dart -O dart_license_checker.dart
     - name: Check Licenses
       run: |
-        dart pub get
-        dart run dart_license_checker.dill
-        cat pubspec.yaml
+        dart run dart_license_checker.dart
         cat licenses.json
         if grep -q "GPL" licenses.json; then echo "License check failed. GPL license found."; exit 1; fi
     - name: Upload License Report
